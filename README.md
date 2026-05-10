@@ -11,6 +11,7 @@ The notebook builds a career-guidance analytics prototype that highlights in-dem
 ## Project Files
 
 - `Singapore_Jobs_Career_Switcher_Analytics.ipynb` - main Jupyter notebook with data cleaning, feature engineering, analysis, charts, dashboard-style filters, and report draft.
+- `Singapore_Jobs_DuckDB_SQL_Analytics.ipynb` - alternative notebook that loads the CSV into DuckDB first, performs cleaning and analysis with SQL, then uses matplotlib for dashboard charts.
 - `requirements.txt` - Python packages needed to run the notebook.
 - `DATA.md` - instructions for placing the large CSV locally.
 - `.gitignore` - excludes large local data files, notebook checkpoints, virtual environments, and cache files.
@@ -48,10 +49,11 @@ Start Jupyter:
 jupyter notebook
 ```
 
-Then open:
+Then open either notebook:
 
 ```text
 Singapore_Jobs_Career_Switcher_Analytics.ipynb
+Singapore_Jobs_DuckDB_SQL_Analytics.ipynb
 ```
 
 ## Analysis Focus

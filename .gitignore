@@ -2,6 +2,8 @@
 SGJobData.csv/
 *.csv
 *.zip
+*.duckdb
+*.duckdb.wal
 
 # Jupyter
 .ipynb_checkpoints/
