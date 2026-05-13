@@ -7,6 +7,7 @@ import pandas as pd
 
 RAW_CSV_PATH = Path("SGJobData.csv") / "SGJobData.csv"
 OUTPUT_PATH = Path("data") / "singapore_jobs_processed.csv.gz"
+DEPLOYMENT_ROW_LIMIT = 200_000
 
 SKILL_KEYWORDS = [
     "python",
@@ -151,7 +152,7 @@ def main() -> None:
         "skill_signals",
     ]
 
-    first_chunk = True
+    processed_chunks = []
     total_rows = 0
     for chunk in pd.read_csv(RAW_CSV_PATH, usecols=usecols, chunksize=50_000):
         chunk["metadata_newPostingDate"] = pd.to_datetime(chunk["metadata_newPostingDate"], errors="coerce")
@@ -172,18 +173,22 @@ def main() -> None:
         chunk["seniority"] = chunk.apply(classify_seniority, axis=1)
 
         processed = chunk[output_columns].drop_duplicates()
-        processed.to_csv(
-            OUTPUT_PATH,
-            mode="wt" if first_chunk else "at",
-            index=False,
-            header=first_chunk,
-            compression="gzip",
-        )
+        processed_chunks.append(processed)
         total_rows += len(processed)
-        first_chunk = False
+
+    deployment_data = (
+        pd.concat(processed_chunks, ignore_index=True)
+        .drop_duplicates()
+        .sort_values("metadata_newPostingDate", ascending=False)
+        .head(DEPLOYMENT_ROW_LIMIT)
+    )
+    deployment_data.to_csv(OUTPUT_PATH, index=False, compression="gzip")
 
     file_size_mb = OUTPUT_PATH.stat().st_size / (1024 * 1024)
-    print(f"Wrote {total_rows:,} rows to {OUTPUT_PATH} ({file_size_mb:.2f} MB)")
+    print(
+        f"Processed {total_rows:,} rows and wrote {len(deployment_data):,} "
+        f"deployment rows to {OUTPUT_PATH} ({file_size_mb:.2f} MB)"
+    )
 
 
 if __name__ == "__main__":

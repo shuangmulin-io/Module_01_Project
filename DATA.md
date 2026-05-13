@@ -28,6 +28,8 @@ The Streamlit app uses this smaller processed file for deployment:
 data/singapore_jobs_processed.csv.gz
 ```
 
+This deployment file keeps the most recent valid postings from the raw CSV to reduce memory usage on Streamlit Community Cloud.
+
 To rebuild it from the raw CSV:
 
 ```bash

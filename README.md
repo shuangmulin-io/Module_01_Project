@@ -37,7 +37,7 @@ The Streamlit app uses a smaller compressed file at:
 data/singapore_jobs_processed.csv.gz
 ```
 
-This file is created from the raw CSV and is small enough for GitHub and Streamlit Community Cloud. To rebuild it after updating the raw CSV:
+This file is created from the raw CSV and keeps the most recent valid postings so it stays small enough for GitHub and Streamlit Community Cloud. To rebuild it after updating the raw CSV:
 
 ```bash
 python scripts/build_processed_data.py
