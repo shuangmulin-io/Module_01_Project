@@ -2,6 +2,7 @@ import ast
 import re
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -40,6 +41,8 @@ SKILL_KEYWORDS = [
     "accounting",
     "project management",
 ]
+
+SENIORITY_ORDER = ["Entry Level", "Mid Level", "Senior", "Manager & Lead"]
 
 
 @st.cache_data(show_spinner="Loading job data...")
@@ -144,6 +147,9 @@ def classify_seniority(row: pd.Series) -> str:
     title = str(row.get("title", "")).lower()
     years = row.get("minimumYearsExperience", 0)
 
+    if pd.isna(years):
+        years = 0
+
     if any(term in title for term in ["intern", "trainee", "fresh graduate", "entry level"]):
         return "Entry Level"
     if "manager" in position_level or any(term in title for term in ["manager", "lead", "principal", "head"]):
@@ -171,12 +177,14 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
         search_text = st.text_input("Search job title or company")
 
         categories = sorted(df["category"].dropna().unique())
-        selected_categories = st.multiselect("Category", categories)
+        selected_categories = st.multiselect("Industry / Job Category", categories)
 
         role_families = sorted(df["role_family"].dropna().unique())
-        selected_role_families = st.multiselect("Role family", role_families)
+        selected_role_families = st.multiselect("Career Track", role_families)
 
-        seniorities = sorted(df["seniority"].dropna().unique())
+        available_seniorities = df["seniority"].dropna().unique().tolist()
+        seniorities = [level for level in SENIORITY_ORDER if level in available_seniorities]
+        seniorities += sorted(level for level in available_seniorities if level not in SENIORITY_ORDER)
         selected_seniorities = st.multiselect("Seniority", seniorities)
 
         employment_types = sorted(df["employmentTypes"].dropna().unique())
@@ -230,10 +238,37 @@ def apply_filters(df: pd.DataFrame) -> pd.DataFrame:
     return filtered
 
 
-def show_bar_chart(data: pd.DataFrame, label_column: str, value_column: str, title: str) -> None:
+def show_bar_chart(
+    data: pd.DataFrame,
+    label_column: str,
+    value_column: str,
+    title: str,
+    y_axis_title: str,
+    x_sort: list[str] | None = None,
+    value_format: str | None = None,
+) -> None:
     st.subheader(title)
-    chart_data = data.set_index(label_column)[value_column]
-    st.bar_chart(chart_data)
+    sort_order = x_sort if x_sort is not None else data[label_column].tolist()
+    chart = (
+        alt.Chart(data)
+        .mark_bar()
+        .encode(
+            x=alt.X(
+                f"{label_column}:N",
+                title=None,
+                sort=sort_order,
+                axis=alt.Axis(labelAngle=-30),
+            ),
+            y=alt.Y(f"{value_column}:Q", title=y_axis_title),
+            tooltip=[
+                alt.Tooltip(f"{label_column}:N", title=label_column.replace("_", " ").title()),
+                alt.Tooltip(f"{value_column}:Q", title=y_axis_title, format=value_format),
+            ],
+        )
+        .properties(height=320)
+    )
+    st.altair_chart(chart, use_container_width=True)
+    st.caption(f"Vertical axis: {y_axis_title}.")
 
 
 def main() -> None:
@@ -275,7 +310,7 @@ def main() -> None:
         st.warning("No jobs match the selected filters.")
         st.stop()
 
-    tab_overview, tab_skills, tab_jobs = st.tabs(["Overview", "Skill Signals", "Job Explorer"])
+    tab_overview, tab_skills, tab_jobs = st.tabs(["Overview", "Skillsets", "Job Explorer"])
 
     with tab_overview:
         left, right = st.columns(2)
@@ -288,7 +323,7 @@ def main() -> None:
             .reset_index(name="job_count")
         )
         with left:
-            show_bar_chart(role_counts, "role_family", "job_count", "Top Role Families")
+            show_bar_chart(role_counts, "role_family", "job_count", "Top Career Tracks", "Number of job postings", value_format=",")
 
         salary_by_role = (
             filtered.groupby("role_family", as_index=False)["average_salary"]
@@ -297,18 +332,53 @@ def main() -> None:
             .head(10)
         )
         with right:
-            show_bar_chart(salary_by_role, "role_family", "average_salary", "Median Salary by Role Family")
+            show_bar_chart(
+                salary_by_role,
+                "role_family",
+                "average_salary",
+                "Median Salary by Career Track",
+                "Median monthly salary (S$)",
+                value_format=",.0f",
+            )
 
         left, right = st.columns(2)
 
         seniority_counts = (
             filtered["seniority"]
             .value_counts()
+            .reindex([level for level in SENIORITY_ORDER if level in filtered["seniority"].unique()])
+            .dropna()
+            .astype(int)
             .rename_axis("seniority")
             .reset_index(name="job_count")
         )
         with left:
-            show_bar_chart(seniority_counts, "seniority", "job_count", "Jobs by Seniority")
+            show_bar_chart(
+                seniority_counts,
+                "seniority",
+                "job_count",
+                "Jobs by Seniority",
+                "Number of job postings",
+                x_sort=SENIORITY_ORDER,
+                value_format=",",
+            )
+
+        salary_by_seniority = (
+            filtered.groupby("seniority", as_index=False)["average_salary"]
+            .median()
+            .assign(seniority=lambda data: pd.Categorical(data["seniority"], categories=SENIORITY_ORDER, ordered=True))
+            .sort_values("seniority")
+        )
+        with right:
+            show_bar_chart(
+                salary_by_seniority,
+                "seniority",
+                "average_salary",
+                "Median Salary by Seniority",
+                "Median monthly salary (S$)",
+                x_sort=SENIORITY_ORDER,
+                value_format=",.0f",
+            )
 
         category_counts = (
             filtered["category"]
@@ -317,15 +387,14 @@ def main() -> None:
             .rename_axis("category")
             .reset_index(name="job_count")
         )
-        with right:
-            show_bar_chart(category_counts, "category", "job_count", "Top Categories")
+        show_bar_chart(category_counts, "category", "job_count", "Top Industry / Job Categories", "Number of job postings", value_format=",")
 
     with tab_skills:
         skill_rows = filtered.explode("skill_signals")
         skill_rows = skill_rows[skill_rows["skill_signals"].notna()]
 
         if skill_rows.empty:
-            st.info("No title-based skill signals found for the selected filters.")
+            st.info("No title-based skillsets found for the selected filters.")
         else:
             left, right = st.columns(2)
 
@@ -337,7 +406,7 @@ def main() -> None:
                 .reset_index(name="job_count")
             )
             with left:
-                show_bar_chart(skill_counts, "skill", "job_count", "Most Visible Skill Signals")
+                show_bar_chart(skill_counts, "skill", "job_count", "Most Visible Skillsets", "Number of job postings", value_format=",")
 
             skill_salary = (
                 skill_rows.groupby("skill_signals", as_index=False)["average_salary"]
@@ -347,11 +416,18 @@ def main() -> None:
                 .rename(columns={"skill_signals": "skill"})
             )
             with right:
-                show_bar_chart(skill_salary, "skill", "average_salary", "Median Salary by Skill Signal")
+                show_bar_chart(
+                    skill_salary,
+                    "skill",
+                    "average_salary",
+                    "Median Salary by Skillset",
+                    "Median monthly salary (S$)",
+                    value_format=",.0f",
+                )
 
             st.dataframe(
                 skill_counts.merge(skill_salary, on="skill", how="left").rename(
-                    columns={"job_count": "Job Count", "average_salary": "Median Salary"}
+                    columns={"skill": "Skillset", "job_count": "Job Count", "average_salary": "Median Salary"}
                 ),
                 use_container_width=True,
                 hide_index=True,
@@ -373,7 +449,13 @@ def main() -> None:
             "metadata_totalNumberOfView",
         ]
         st.dataframe(
-            filtered[display_columns].sort_values("average_salary", ascending=False),
+            filtered[display_columns]
+            .sort_values("average_salary", ascending=False)
+            .rename(columns={
+                "postedCompany_name": "company",
+                "category": "industry_job_category",
+                "role_family": "career_track",
+            }),
             use_container_width=True,
             hide_index=True,
         )

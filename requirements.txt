@@ -1,6 +1,7 @@
 pandas>=2.0
 numpy>=1.24
 matplotlib>=3.7
+altair>=5.0
 streamlit>=1.35
 jupyter>=1.0
 ipywidgets>=8.0

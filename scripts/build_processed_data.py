@@ -115,6 +115,7 @@ def main() -> None:
     usecols = [
         "categories",
         "employmentTypes",
+        "metadata_jobPostId",
         "metadata_newPostingDate",
         "metadata_totalNumberJobApplication",
         "metadata_totalNumberOfView",
@@ -130,6 +131,7 @@ def main() -> None:
         "average_salary",
     ]
     output_columns = [
+        "metadata_jobPostId",
         "title",
         "postedCompany_name",
         "category",
@@ -152,12 +154,24 @@ def main() -> None:
     first_chunk = True
     total_rows = 0
     for chunk in pd.read_csv(RAW_CSV_PATH, usecols=usecols, chunksize=50_000):
+        chunk["metadata_newPostingDate"] = pd.to_datetime(chunk["metadata_newPostingDate"], errors="coerce")
+
+        salary_mask = (
+            chunk["salary_type"].eq("Monthly")
+            & chunk["metadata_newPostingDate"].notna()
+            & chunk["average_salary"].notna()
+            & chunk["average_salary"].between(500, 50_000)
+            & chunk["salary_minimum"].between(0, 50_000)
+            & chunk["salary_maximum"].between(0, 70_000)
+        )
+        chunk = chunk.loc[salary_mask].copy()
+
         chunk["category"] = chunk["categories"].apply(extract_primary_category)
         chunk["role_family"] = chunk["title"].apply(classify_role_family)
         chunk["skill_signals"] = chunk["title"].apply(extract_skill_signals)
         chunk["seniority"] = chunk.apply(classify_seniority, axis=1)
 
-        processed = chunk[output_columns]
+        processed = chunk[output_columns].drop_duplicates()
         processed.to_csv(
             OUTPUT_PATH,
             mode="wt" if first_chunk else "at",
